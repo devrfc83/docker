@@ -1,0 +1,369 @@
+name: development
+
+volumes:
+    grafana_data:
+    keycloak:
+    mail:
+    mariadb:
+    memcached:
+    minio:
+    mongodb_config:
+    mongodb_data:
+    postgresql:
+    valkey:
+    osm_data:
+    osm_tiles:
+
+networks:
+    default:
+        name: development
+
+# Limites pensados para ~8 GB de RAM en el host (dejar margen para SO, IDE y navegador).
+# Si levantas todo a la vez, el tope teorico ronda 3,2 GB; conviene apagar servicios que no uses.
+x-mem-64m: &mem-64m
+    deploy:
+        resources:
+            limits:
+                memory: 64M
+x-mem-96m: &mem-96m
+    deploy:
+        resources:
+            limits:
+                memory: 96M
+x-mem-192m: &mem-192m
+    deploy:
+        resources:
+            limits:
+                memory: 192M
+x-mem-256m: &mem-256m
+    deploy:
+        resources:
+            limits:
+                memory: 256M
+x-mem-384m: &mem-384m
+    deploy:
+        resources:
+            limits:
+                memory: 384M
+x-mem-512m: &mem-512m
+    deploy:
+        resources:
+            limits:
+                memory: 512M
+x-mem-768m: &mem-768m
+    deploy:
+        resources:
+            limits:
+                memory: 768M
+
+# Salida stdout/stderr de cada contenedor al rsyslog del host (UDP 514).
+# El driver syslog resuelve el host en el daemon (no en la DNS de la red compose).
+x-logging-syslog: &logging-syslog
+    logging:
+        driver: syslog
+        options:
+            syslog-address: "udp://127.0.0.1:514"
+            tag: "{{.Name}}"
+
+# PostgreSQL: logs a stderr (capturados por el driver syslog de Docker).
+x-postgres-cmd-main: &postgres-cmd-main
+    - -c
+    - shared_buffers=96MB
+    - -c
+    - max_connections=80
+    - -c
+    - work_mem=4MB
+    - -c
+    - log_destination=stderr
+    - -c
+    - logging_collector=off
+    - -c
+    - log_min_messages=warning
+    - -c
+    - timezone=America/Santiago
+    - -c
+    - default_text_search_config=spanish
+
+x-postgres-image: &postgres-image
+    image: docker.io/postgis/postgis@sha256:804c0a7b287a58e40d7b6ea012d97346922f56a301de9f6c4860ef4c4059f259
+
+services:
+    keycloak:
+        <<: [*mem-512m, *logging-syslog]
+        image: dhi.io/keycloak@sha256:26c097759886f2a8bf62242ce0b53c71427853b2dd4bf8a13fce64b4fb0f2d73
+        container_name: keycloak
+        restart: unless-stopped
+        command: ["start-dev", "--http-port", "20001", "--https-port", "20002"]
+        healthcheck:
+            test:
+                - CMD-SHELL
+                - |
+                  bash -c 'exec 3<>/dev/tcp/127.0.0.1/20001 && printf "GET /health/ready HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n" >&3 && head -1 <&3 | grep -q "200"'
+            interval: 10s
+            timeout: 5s
+            retries: 3
+            start_period: 60s
+        depends_on:
+            postgresql:
+                condition: service_healthy
+        volumes:
+            - keycloak:/keycloak
+            - ./keycloak/realm.json:/opt/keycloak/realm.json:z
+        networks:
+            - default
+        hostname: keycloak
+        ports:
+            - 20001:20001/tcp
+            - 20002:20002/tcp
+        environment:
+            KC_BOOTSTRAP_ADMIN_USERNAME: admin
+            KC_BOOTSTRAP_ADMIN_PASSWORD: admin
+            KC_HEALTH_ENABLED: true
+            KC_HTTP_ENABLED: true
+            KC_HTTP_PORT: 20001
+            KC_HTTPS_PORT: 20002
+            KC_DB: postgres
+            KC_DB_URL_HOST: postgresql
+            KC_DB_URL_PORT: 5432
+            KC_DB_NAME: keycloak
+            KC_DB_USERNAME: keycloak
+            KC_DB_PASSWORD: keycloak
+            KC_DB_SCHEMA: public
+            KC_LOG_LEVEL: info
+            KC_IMPORT: /opt/keycloak/realm.json
+            JAVA_OPTS_APPEND: "-Xms128m -Xmx384m"
+    mail:
+        <<: [*mem-64m, *logging-syslog]
+        image: mailhog/mailhog:v1.0.1
+        container_name: mail
+        restart: unless-stopped
+        healthcheck:
+            test: [ "CMD-SHELL", "wget -q -O /dev/null http://localhost:8025/ || exit 1" ]
+            interval: 10s
+            timeout: 5s
+            retries: 3
+            start_period: 60s
+        volumes:
+            - mail:/data
+        networks:
+            - default
+        hostname: mail
+        ports:
+            - 25:1025
+            - 20003:8025
+    minio:
+        <<: [*mem-256m, *logging-syslog]
+        image: docker.io/minio/minio@sha256:14cea493d9a34af32f524e538b8346cf79f3321eff8e708c1e2960462bd8936e
+        container_name: minio
+        command: server /data --address ":20004" --console-address ":20005"
+        restart: unless-stopped
+        healthcheck:
+            test: [ "CMD", "curl", "-f", "http://localhost:20004/minio/health/ready" ]
+            interval: 10s
+            timeout: 5s
+            retries: 3
+            start_period: 60s
+        volumes:
+            - minio:/data
+        networks:
+            - default
+        hostname: minio
+        ports:
+            - 20004:20004
+            - 20005:20005
+        environment:
+            MINIO_ROOT_USER: administrator
+            MINIO_ROOT_PASSWORD: administrator
+    memcached:
+        <<: [*mem-96m, *logging-syslog]
+        image: memcached:alpine
+        container_name: memcached
+        command:
+            - sh
+            - -euc
+            - |
+              echo 'mech_list: plain' > "$$SASL_CONF_PATH"
+              echo "$${MEMCACHED_USERNAME}@$$HOSTNAME:$${MEMCACHED_PASSWORD}" > "$$MEMCACHED_SASL_PWDB"
+              echo "$${MEMCACHED_USERNAME}@localhost:$${MEMCACHED_PASSWORD}" >> "$$MEMCACHED_SASL_PWDB"
+              exec memcached -m 64 -S
+        restart: unless-stopped
+        healthcheck:
+            test:
+                - CMD-SHELL
+                - pgrep -x memcached >/dev/null
+            interval: 10s
+            timeout: 5s
+            retries: 3
+            start_period: 60s
+        volumes:
+            - memcached:/var/lib/memcached/data
+        networks:
+            - default
+        hostname: memcached
+        ports:
+            - 11211:11211
+        environment:
+            SASL_CONF_PATH: /tmp/memcached.conf
+            MEMCACHED_SASL_PWDB: /tmp/memcached-sasl-db
+            MEMCACHED_USERNAME: memcached
+            MEMCACHED_PASSWORD: memcached
+    valkey:
+        <<: [*mem-192m, *logging-syslog]
+        image: valkey/valkey:9-alpine
+        container_name: valkey
+        command:
+            - /bin/sh
+            - -ec
+            - |
+              cat > /tmp/users.acl <<EOF
+              user default off
+              user $${VALKEY_USERNAME} on >$${VALKEY_PASSWORD} ~* +@all
+              EOF
+              exec valkey-server --save 60 1 --loglevel warning --maxmemory 128mb --maxmemory-policy allkeys-lru --aclfile /tmp/users.acl
+        restart: unless-stopped
+        healthcheck:
+            test:
+                - CMD-SHELL
+                - '[ "$$(valkey-cli --user "$${VALKEY_USERNAME}" --pass "$${VALKEY_PASSWORD}" ping 2>/dev/null)" = "PONG" ]'
+            interval: 10s
+            timeout: 5s
+            retries: 3
+            start_period: 60s
+        volumes:
+            - valkey:/data
+        networks:
+            - default
+        hostname: valkey
+        ports:
+            - 6379:6379
+        environment:
+            VALKEY_USERNAME: valkey
+            VALKEY_PASSWORD: valkey
+    postgresql:
+        <<: [*mem-384m, *logging-syslog, *postgres-image]
+        container_name: postgresql
+        restart: unless-stopped
+        command: *postgres-cmd-main
+        healthcheck:
+            test: [ "CMD", "pg_isready", "-q", "-d", "postgres", "-U", "postgres" ]
+            interval: 10s
+            timeout: 5s
+            retries: 3
+            start_period: 60s
+        volumes:
+            - ./postgres/init:/docker-entrypoint-initdb.d:z
+            - postgresql:/var/lib/postgresql
+        networks:
+            - default
+        hostname: postgresql
+        ports:
+            - 5432:5432
+        environment:
+            TZ: America/Santiago
+            POSTGRES_USER: postgres
+            POSTGRES_PASSWORD: postgres
+            POSTGRES_INITDB_ARGS: "--encoding=UTF-8 --locale-provider=icu --icu-locale=es-CL"
+    mariadb:
+        <<: [*mem-384m, *logging-syslog]
+        image: mariadb:12
+        container_name: mariadb
+        restart: unless-stopped
+        command:
+            - --innodb-buffer-pool-size=96M
+            - --max-connections=80
+        healthcheck:
+            test: [ "CMD", "mysqladmin", "ping", "-h", "localhost" ]
+            interval: 10s
+            timeout: 5s
+            retries: 3
+            start_period: 60s
+        volumes:
+            - ./mariadb/conf:/etc/mysql/conf.d:z
+            - ./mariadb/init:/docker-entrypoint-initdb.d:z
+            - mariadb:/var/lib/mysql
+        networks:
+            - default
+        hostname: mariadb
+        ports:
+            - 3306:3306
+        environment:
+            MARIADB_AUTO_UPGRADE: true
+            MARIADB_ROOT_PASSWORD: root
+    mongodb:
+        <<: [*mem-384m, *logging-syslog]
+        image: mongodb/mongodb-community-server:8.3-ubuntu2204
+        container_name: mongodb
+        restart: unless-stopped
+        entrypoint: ["/bin/sh", "/entrypoint-kernel7.sh"]
+        command:
+            - mongod
+            - --wiredTigerCacheSizeGB=0.25
+        healthcheck:
+            test:
+                - CMD-SHELL
+                - 'mongosh --username "$${MONGODB_INITDB_ROOT_USERNAME}" --password "$${MONGODB_INITDB_ROOT_PASSWORD}" --authenticationDatabase admin --quiet --eval "db.adminCommand({ ping: 1 }).ok" | grep -q 1'
+            interval: 10s
+            timeout: 5s
+            retries: 3
+            start_period: 60s
+        volumes:
+            - ./mongodb/entrypoint-kernel7.sh:/entrypoint-kernel7.sh:ro,z
+            - mongodb_config:/data/configdb
+            - mongodb_data:/data/db
+        networks:
+            - default
+        hostname: mongodb
+        ports:
+            - 27017:27017
+        environment:
+            # Evita cierres por TCMalloc/RSEQ en kernel 6.19+; el wrapper lo fija tambien.
+            GLIBC_TUNABLES: glibc.pthread.rseq=1
+            MONGODB_INITDB_ROOT_USERNAME: mongodb
+            MONGODB_INITDB_ROOT_PASSWORD: mongodb
+    osm:
+        <<: [*mem-768m, *logging-syslog]
+        build: ./osm
+        container_name: osm
+        restart: unless-stopped
+        healthcheck:
+            test: [ "CMD-SHELL", "wget -q -O /dev/null http://localhost/ || exit 1" ]
+            interval: 10s
+            timeout: 5s
+            retries: 3
+            start_period: 60s
+        volumes:
+            - osm_data:/data/database
+            - osm_tiles:/data/tiles
+            - ./osm/chile-latest.osm.pbf:/data/region.osm.pbf
+        networks:
+            - default
+        hostname: osm
+        ports:
+            - 20006:80
+        environment:
+            - ALLOW_CORS=true
+            - UPDATES=enabled
+            - MAX_INTERVAL_SECONDS=86400
+            - REPLICATION_URL=https://planet.openstreetmap.org/replication/day/
+        command: run
+    grafana:
+        <<: [*mem-256m, *logging-syslog]
+        image: grafana/grafana:13.0
+        container_name: grafana
+        restart: unless-stopped
+        healthcheck:
+            test: [ "CMD", "curl", "-f", "http://localhost:3000" ]
+            interval: 10s
+            timeout: 5s
+            retries: 3
+            start_period: 60s
+        volumes:
+            - grafana_data:/var/lib/grafana
+        networks:
+            - default
+        hostname: grafana
+        ports:
+            - 20007:3000
+        environment:
+            - GF_SECURITY_ADMIN_PASSWORD=grafana
+            - GF_INSTALL_PLUGINS=grafana-mongodb-datasource,grafana-piechart-panel

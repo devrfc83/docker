@@ -1,0 +1,9 @@
+[mysqld]
+# Todo el logging a la salida del contenedor (capturada por el driver syslog de Docker).
+log_error = /dev/stderr
+general_log = 1
+general_log_file = /dev/stdout
+slow_query_log = 1
+slow_query_log_file = /dev/stdout
+long_query_time = 0
+log_slow_verbosity = query

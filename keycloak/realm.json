@@ -1,0 +1,141 @@
+{
+    "realm": "dev",
+    "displayName": "Development",
+    "displayNameHtml": "Development",
+    "enabled": true,
+    "internationalizationEnabled": true,
+    "supportedLocales": [
+        "en",
+        "es"
+    ],
+    "defaultLocale": "es",
+    "sslRequired": "none",
+    "registrationAllowed": true,
+    "registrationEmailAsUsername": true,
+    "rememberMe": true,
+    "verifyEmail": true,
+    "loginWithEmailAllowed": true,
+    "duplicateEmailsAllowed": false,
+    "resetPasswordAllowed": true,
+    "editUsernameAllowed": true,
+    "bruteForceProtected": true,
+    "permanentLockout": false,
+    "bruteForceStrategy": "MULTIPLE",
+    "roles": {
+        "realm": [
+            {
+                "name": "admin",
+                "description": "Administrator"
+            },
+            {
+                "name": "editor",
+                "description": "Editor"
+            },
+            {
+                "name": "user",
+                "description": "User"
+            }
+        ]
+    },
+    "clients": [
+        {
+            "clientId": "laravel-app",
+            "name": "Laravel Application",
+            "enabled": true,
+            "protocol": "openid-connect",
+            "publicClient": false,
+            "secret": "my-client-secret",
+            "standardFlowEnabled": true,
+            "implicitFlowEnabled": false,
+            "directAccessGrantsEnabled": true,
+            "serviceAccountsEnabled": false,
+            "rootUrl": "http://dev.local",
+            "baseUrl": "http://dev.local",
+            "redirectUris": [
+                "http://dev.local/*",
+                "http://dev.local/auth/callback/keycloak"
+            ],
+            "webOrigins": [
+                "http://dev.local"
+            ],
+            "defaultRoles": [
+                "user"
+            ]
+        }
+    ],
+    "groups": [
+        {
+            "name": "demo",
+            "path": "/demo",
+            "subGroups": []
+        }
+    ],
+    "users": [
+        {
+            "username": "admin@example.org",
+            "enabled": true,
+            "totp": false,
+            "emailVerified": true,
+            "firstName": "Admin",
+            "lastName": "User",
+            "email": "admin@example.org",
+            "credentials": [
+                {
+                    "type": "password",
+                    "value": "password",
+                    "temporary": false
+                }
+            ],
+            "realmRoles": [
+                "admin"
+            ],
+            "groups": [
+                "demo"
+            ]
+        },
+        {
+            "username": "user@example.org",
+            "enabled": true,
+            "totp": false,
+            "emailVerified": true,
+            "firstName": "Normal",
+            "lastName": "User",
+            "email": "user@example.org",
+            "credentials": [
+                {
+                    "type": "password",
+                    "value": "password",
+                    "temporary": false
+                }
+            ],
+            "realmRoles": [
+                "user"
+            ],
+            "groups": [
+                "demo"
+            ]
+        },
+        {
+            "username": "dev-user",
+            "enabled": true,
+            "totp": false,
+            "emailVerified": true,
+            "firstName": "Dev",
+            "lastName": "User",
+            "email": "dev@dev.local",
+            "credentials": [
+                {
+                    "type": "password",
+                    "value": "dev123",
+                    "temporary": false
+                }
+            ],
+            "realmRoles": [
+                "user"
+            ]
+        }
+    ],
+    "requiredCredentials": [
+        "password"
+    ]
+}

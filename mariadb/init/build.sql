@@ -1,0 +1,18 @@
+CREATE USER 'developer'@'%' IDENTIFIED BY 'developer';
+GRANT ALL PRIVILEGES ON *.* TO 'developer'@'%' WITH GRANT OPTION;
+
+CREATE USER 'tester'@'%' IDENTIFIED BY 'tester';
+GRANT ALL PRIVILEGES ON *.* TO 'tester'@'%' WITH GRANT OPTION;
+
+CREATE USER 'auditor'@'%' IDENTIFIED BY 'auditor';
+GRANT ALL PRIVILEGES ON *.* TO 'auditor'@'%' WITH GRANT OPTION;
+
+CREATE USER 'pulse'@'%' IDENTIFIED BY 'pulse';
+GRANT ALL PRIVILEGES ON *.* TO 'pulse'@'%' WITH GRANT OPTION;
+
+FLUSH PRIVILEGES;
+
+CREATE DATABASE development CHARACTER SET utf8mb4 COLLATE utf8mb4_spanish_ci;
+CREATE DATABASE testing CHARACTER SET utf8mb4 COLLATE utf8mb4_spanish_ci;
+CREATE DATABASE auditing CHARACTER SET utf8mb4 COLLATE utf8mb4_spanish_ci;
+CREATE DATABASE pulse CHARACTER SET utf8mb4 COLLATE utf8mb4_spanish_ci;
